@@ -30,6 +30,7 @@ jobs:
           mkdir -p app/src/main/java/com/example/namaskarapp
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/raw
           mkdir -p app/src/main/assets
 
           # 1. gradle.properties (Enables AndroidX support)
@@ -38,10 +39,13 @@ jobs:
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          # 2. Download Google MediaPipe Hand Detection AI Model
+          # 2. Download Google MediaPipe Hand AI Model
           curl -L -o app/src/main/assets/hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 
-          # 3. Settings configuration
+          # 3. Download Authentic "OM" Chant Audio
+          curl -L -A "Mozilla/5.0" -o app/src/main/res/raw/om.ogg "https://commons.wikimedia.org/wiki/Special:FilePath/Om_pro.ogg" || true
+
+          # 4. Settings configuration
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -61,7 +65,7 @@ jobs:
           include(":app")
           EOF
 
-          # 4. Root build configuration
+          # 5. Root build configuration
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.3.2" apply false
@@ -69,7 +73,7 @@ jobs:
           }
           EOF
 
-          # 5. App build configuration
+          # 6. App build configuration
           cat << 'EOF' > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -84,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 2
+                  versionName = "2.0"
               }
 
               buildTypes {
@@ -118,12 +122,12 @@ jobs:
           }
           EOF
 
-          # 6. Android Manifest
+          # 7. Android Manifest
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <uses-feature android:name="android.hardware.camera" android:required="true" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
               <uses-permission android:name="android.permission.CAMERA" />
               <uses-permission android:name="android.permission.WAKE_LOCK" />
               <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -148,7 +152,7 @@ jobs:
           </manifest>
           EOF
 
-          # 7. UI Layout
+          # 8. User Interface Layout
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -157,34 +161,52 @@ jobs:
               android:layout_height="match_parent"
               android:background="#000000">
 
+              <!-- Camera Feed View -->
               <androidx.camera.view.PreviewView
                   android:id="@+id/previewView"
                   android:layout_width="match_parent"
                   android:layout_height="match_parent" />
 
-              <TextView
-                  android:id="@+id/statusText"
-                  android:layout_width="0dp"
+              <!-- Top Bar: Status and Camera Switch Button -->
+              <LinearLayout
+                  android:id="@+id/topBar"
+                  android:layout_width="match_parent"
                   android:layout_height="wrap_content"
-                  android:layout_margin="16dp"
-                  android:background="#CC000000"
-                  android:gravity="center"
-                  android:padding="14dp"
-                  android:text="Waiting for Namaskar gesture..."
-                  android:textColor="#FFFFFF"
-                  android:textSize="16sp"
-                  android:textStyle="bold"
-                  app:layout_constraintEnd_toEndOf="parent"
-                  app:layout_constraintStart_toStartOf="parent"
-                  app:layout_constraintTop_toTopOf="parent" />
+                  android:orientation="horizontal"
+                  android:padding="12dp"
+                  app:layout_constraintTop_toTopOf="parent">
 
+                  <TextView
+                      android:id="@+id/statusText"
+                      android:layout_width="0dp"
+                      android:layout_height="wrap_content"
+                      android:layout_weight="1"
+                      android:background="#CC000000"
+                      android:gravity="center_vertical"
+                      android:padding="12dp"
+                      android:text="Waiting for Namaskar..."
+                      android:textColor="#FFFFFF"
+                      android:textSize="14sp"
+                      android:textStyle="bold" />
+
+                  <Button
+                      android:id="@+id/btnSwitchCamera"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:layout_marginStart="8dp"
+                      android:backgroundTint="#424242"
+                      android:text="🔄 Cam: Rear"
+                      android:textSize="12sp" />
+              </LinearLayout>
+
+              <!-- Bottom Control Settings Card -->
               <com.google.android.material.card.MaterialCardView
                   android:id="@+id/controlsCard"
                   android:layout_width="0dp"
                   android:layout_height="wrap_content"
-                  android:layout_margin="16dp"
-                  app:cardBackgroundColor="#E6212121"
-                  app:cardCornerRadius="16dp"
+                  android:layout_margin="14dp"
+                  app:cardBackgroundColor="#E61E1E1E"
+                  app:cardCornerRadius="14dp"
                   app:cardElevation="6dp"
                   app:layout_constraintBottom_toBottomOf="parent"
                   app:layout_constraintEnd_toEndOf="parent"
@@ -194,52 +216,102 @@ jobs:
                       android:layout_width="match_parent"
                       android:layout_height="wrap_content"
                       android:orientation="vertical"
-                      android:padding="16dp">
+                      android:padding="14dp">
+
+                      <TextView
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Audio on Gesture Recognized:"
+                          android:textColor="#B0BEC5"
+                          android:textSize="13sp"
+                          android:textStyle="bold" />
+
+                      <!-- Sound Mode Radio Buttons -->
+                      <RadioGroup
+                          android:id="@+id/radioGroupAudio"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:layout_marginTop="4dp"
+                          android:orientation="vertical">
+
+                          <RadioButton
+                              android:id="@+id/rbAudioOm"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:checked="true"
+                              android:text="Play Default 'OM' Sound"
+                              android:textColor="#FFFFFF"
+                              android:textSize="14sp" />
+
+                          <RadioButton
+                              android:id="@+id/rbAudioCustom"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:text="Play From Custom Audios"
+                              android:textColor="#FFFFFF"
+                              android:textSize="14sp" />
+                      </RadioGroup>
 
                       <TextView
                           android:id="@+id/audioFilesCountText"
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
-                          android:gravity="center"
-                          android:text="Audio Files Loaded: 0"
-                          android:textColor="#E0E0E0"
-                          android:textSize="14sp" />
+                          android:layout_marginStart="4dp"
+                          android:text="Custom Audios Loaded: 0"
+                          android:textColor="#9E9E9E"
+                          android:textSize="12sp" />
 
+                      <!-- Audio Buttons: Add, Test, Clear -->
                       <LinearLayout
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
-                          android:layout_marginTop="12dp"
+                          android:layout_marginTop="8dp"
                           android:orientation="horizontal">
 
                           <Button
                               android:id="@+id/btnAddAudio"
                               android:layout_width="0dp"
                               android:layout_height="wrap_content"
-                              android:layout_marginEnd="6dp"
+                              android:layout_marginEnd="4dp"
                               android:layout_weight="1"
-                              android:text="Add Audios" />
+                              android:text="+ Add"
+                              android:textSize="12sp" />
+
+                          <Button
+                              android:id="@+id/btnTestAudio"
+                              style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                              android:layout_width="0dp"
+                              android:layout_height="wrap_content"
+                              android:layout_marginEnd="4dp"
+                              android:layout_weight="1"
+                              android:text="▶ Test"
+                              android:textColor="#4CAF50"
+                              android:textSize="12sp" />
 
                           <Button
                               android:id="@+id/btnClearAudio"
                               style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                               android:layout_width="0dp"
                               android:layout_height="wrap_content"
-                              android:layout_marginStart="6dp"
                               android:layout_weight="1"
-                              android:text="Clear All"
-                              android:textColor="#FF5252" />
+                              android:text="Clear"
+                              android:textColor="#FF5252"
+                              android:textSize="12sp" />
                       </LinearLayout>
 
+                      <!-- Enable Black Screen Button -->
                       <Button
-                          android:id="@+id/btnStealthMode"
+                          android:id="@+id/btnEnableStealth"
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
                           android:layout_marginTop="8dp"
-                          android:backgroundTint="#424242"
-                          android:text="Enter Black Screen Mode" />
+                          android:backgroundTint="#263238"
+                          android:text="🌙 Enable Black Screen Mode"
+                          android:textSize="13sp" />
                   </LinearLayout>
               </com.google.android.material.card.MaterialCardView>
 
+              <!-- Black Screen Overlay (Stealth Mode) -->
               <FrameLayout
                   android:id="@+id/blackScreenOverlay"
                   android:layout_width="match_parent"
@@ -249,21 +321,39 @@ jobs:
                   android:focusable="true"
                   android:visibility="gone">
 
-                  <TextView
-                      android:layout_width="wrap_content"
+                  <LinearLayout
+                      android:layout_width="match_parent"
                       android:layout_height="wrap_content"
-                      android:layout_gravity="bottom|center_horizontal"
-                      android:layout_marginBottom="32dp"
-                      android:alpha="0.2"
-                      android:text="Double-tap anywhere to wake screen"
-                      android:textColor="#FFFFFF"
-                      android:textSize="12sp" />
+                      android:layout_gravity="bottom"
+                      android:gravity="center_horizontal"
+                      android:orientation="vertical"
+                      android:padding="24dp">
+
+                      <Button
+                          android:id="@+id/btnDisableStealth"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:backgroundTint="#212121"
+                          android:paddingStart="24dp"
+                          android:paddingEnd="24dp"
+                          android:text="☀️ Disable Black Screen Mode"
+                          android:textColor="#E0E0E0" />
+
+                      <TextView
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:layout_marginTop="8dp"
+                          android:alpha="0.3"
+                          android:text="or double-tap anywhere on screen to exit"
+                          android:textColor="#FFFFFF"
+                          android:textSize="11sp" />
+                  </LinearLayout>
               </FrameLayout>
 
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 8. Main Application Logic
+          # 9. Complete App Logic
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -285,10 +375,7 @@ jobs:
           import android.view.MotionEvent
           import android.view.View
           import android.view.WindowManager
-          import android.widget.Button
-          import android.widget.FrameLayout
-          import android.widget.TextView
-          import android.widget.Toast
+          import android.widget.*
           import androidx.activity.result.contract.ActivityResultContracts
           import androidx.appcompat.app.AppCompatActivity
           import androidx.camera.core.*
@@ -312,12 +399,19 @@ jobs:
 
               private lateinit var previewView: PreviewView
               private lateinit var statusText: TextView
+              private lateinit var btnSwitchCamera: Button
               private lateinit var audioFilesCountText: TextView
+              private lateinit var rbAudioOm: RadioButton
+              private lateinit var rbAudioCustom: RadioButton
               private lateinit var btnAddAudio: Button
+              private lateinit var btnTestAudio: Button
               private lateinit var btnClearAudio: Button
-              private lateinit var btnStealthMode: Button
+              private lateinit var btnEnableStealth: Button
+              private lateinit var btnDisableStealth: Button
               private lateinit var blackScreenOverlay: FrameLayout
 
+              private var cameraProvider: ProcessCameraProvider? = null
+              private var lensFacing = CameraSelector.LENS_FACING_BACK
               private lateinit var cameraExecutor: ExecutorService
               private lateinit var handLandmarker: HandLandmarker
               private var mediaPlayer: MediaPlayer? = null
@@ -338,47 +432,72 @@ jobs:
 
                   previewView = findViewById(R.id.previewView)
                   statusText = findViewById(R.id.statusText)
+                  btnSwitchCamera = findViewById(R.id.btnSwitchCamera)
                   audioFilesCountText = findViewById(R.id.audioFilesCountText)
+                  rbAudioOm = findViewById(R.id.rbAudioOm)
+                  rbAudioCustom = findViewById(R.id.rbAudioCustom)
                   btnAddAudio = findViewById(R.id.btnAddAudio)
+                  btnTestAudio = findViewById(R.id.btnTestAudio)
                   btnClearAudio = findViewById(R.id.btnClearAudio)
-                  btnStealthMode = findViewById(R.id.btnStealthMode)
+                  btnEnableStealth = findViewById(R.id.btnEnableStealth)
+                  btnDisableStealth = findViewById(R.id.btnDisableStealth)
                   blackScreenOverlay = findViewById(R.id.blackScreenOverlay)
 
                   cameraExecutor = Executors.newSingleThreadExecutor()
 
+                  ensureOmChantReady()
                   loadExistingAudioFiles()
-                  setupButtons()
-                  setupDoubleTapToWake()
+                  setupUIEvents()
                   initMediaPipe()
 
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                      startCamera()
+                      initCameraProvider()
                   } else {
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
                   }
               }
 
-              private fun setupButtons() {
+              private fun setupUIEvents() {
+                  // 1. Camera Flip (Front vs Rear)
+                  btnSwitchCamera.setOnClickListener {
+                      lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                          CameraSelector.LENS_FACING_FRONT
+                      } else {
+                          CameraSelector.LENS_FACING_BACK
+                      }
+                      btnSwitchCamera.text = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "🔄 Cam: Front" else "🔄 Cam: Rear"
+                      bindCameraUseCases()
+                  }
+
+                  // 2. Audio Selection & Testing
                   btnAddAudio.setOnClickListener {
                       selectAudiosLauncher.launch("audio/*")
                   }
 
+                  btnTestAudio.setOnClickListener {
+                      playAudioOnLoudspeaker()
+                      Toast.makeText(this, "Testing sound on loudspeaker...", Toast.LENGTH_SHORT).show()
+                  }
+
                   btnClearAudio.setOnClickListener {
                       val audioDir = File(filesDir, "audio_tracks")
-                      if (audioDir.exists()) {
-                          audioDir.listFiles()?.forEach { it.delete() }
-                      }
+                      if (audioDir.exists()) audioDir.listFiles()?.forEach { it.delete() }
                       audioFilesList.clear()
                       updateAudioCountUI()
-                      Toast.makeText(this, "All audios cleared", Toast.LENGTH_SHORT).show()
+                      rbAudioOm.isChecked = true
+                      Toast.makeText(this, "Cleared custom audios (Switched to OM)", Toast.LENGTH_SHORT).show()
                   }
 
-                  btnStealthMode.setOnClickListener {
+                  // 3. Black Screen Mode Controls (Enable and Disable)
+                  btnEnableStealth.setOnClickListener {
                       blackScreenOverlay.visibility = View.VISIBLE
                   }
-              }
 
-              private fun setupDoubleTapToWake() {
+                  btnDisableStealth.setOnClickListener {
+                      blackScreenOverlay.visibility = View.GONE
+                  }
+
+                  // Double tap to wake from black screen
                   val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                       override fun onDoubleTap(e: MotionEvent): Boolean {
                           if (blackScreenOverlay.visibility == View.VISIBLE) {
@@ -395,85 +514,38 @@ jobs:
                   }
               }
 
-              private fun importAudioFiles(uris: List<Uri>) {
-                  val audioDir = File(filesDir, "audio_tracks").apply { if (!exists()) mkdirs() }
-                  var importedCount = 0
-
-                  uris.forEach { uri ->
-                      try {
-                          contentResolver.openInputStream(uri)?.use { inputStream ->
-                              val destFile = File(audioDir, "track_${System.currentTimeMillis()}_${Random.nextInt(1000)}.mp3")
-                              FileOutputStream(destFile).use { outputStream ->
-                                  inputStream.copyTo(outputStream)
-                              }
-                              audioFilesList.add(destFile)
-                              importedCount++
-                          }
-                      } catch (e: Exception) {
-                          e.printStackTrace()
-                      }
-                  }
-
-                  updateAudioCountUI()
-                  Toast.makeText(this, "Added $importedCount audio(s)", Toast.LENGTH_SHORT).show()
-              }
-
-              private fun loadExistingAudioFiles() {
-                  audioFilesList.clear()
-                  val audioDir = File(filesDir, "audio_tracks")
-                  if (audioDir.exists()) {
-                      audioDir.listFiles()?.filter { it.isFile }?.let {
-                          audioFilesList.addAll(it)
-                      }
-                  }
-                  updateAudioCountUI()
-              }
-
-              private fun updateAudioCountUI() {
-                  audioFilesCountText.text = "Audio Files Loaded: ${audioFilesList.size}"
-              }
-
-              private fun initMediaPipe() {
-                  val baseOptions = BaseOptions.builder()
-                      .setModelAssetPath("hand_landmarker.task")
-                      .build()
-                  val options = HandLandmarker.HandLandmarkerOptions.builder()
-                      .setBaseOptions(baseOptions)
-                      .setRunningMode(RunningMode.IMAGE)
-                      .setNumHands(2)
-                      .setMinHandDetectionConfidence(0.5f)
-                      .setMinHandPresenceConfidence(0.5f)
-                      .setMinTrackingConfidence(0.5f)
-                      .build()
-                  handLandmarker = HandLandmarker.createFromOptions(this, options)
-              }
-
-              private fun startCamera() {
+              private fun initCameraProvider() {
                   val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
                   cameraProviderFuture.addListener({
-                      val cameraProvider = cameraProviderFuture.get()
-                      val preview = Preview.Builder().build().also {
-                          it.setSurfaceProvider(previewView.surfaceProvider)
-                      }
-
-                      val imageAnalysis = ImageAnalysis.Builder()
-                          .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                          .build()
-                          .also {
-                              it.setAnalyzer(cameraExecutor) { imageProxy ->
-                                  processCameraFrame(imageProxy)
-                              }
-                          }
-
-                      val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-                      try {
-                          cameraProvider.unbindAll()
-                          cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
-                      } catch (e: Exception) {
-                          e.printStackTrace()
-                      }
+                      cameraProvider = cameraProviderFuture.get()
+                      bindCameraUseCases()
                   }, ContextCompat.getMainExecutor(this))
+              }
+
+              private fun bindCameraUseCases() {
+                  val provider = cameraProvider ?: return
+                  val preview = Preview.Builder().build().also {
+                      it.setSurfaceProvider(previewView.surfaceProvider)
+                  }
+
+                  val imageAnalysis = ImageAnalysis.Builder()
+                      .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                      .build()
+                      .also {
+                          it.setAnalyzer(cameraExecutor) { imageProxy ->
+                              processCameraFrame(imageProxy)
+                          }
+                      }
+
+                  val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+
+                  try {
+                      provider.unbindAll()
+                      provider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                      Toast.makeText(this, "Failed to start camera", Toast.LENGTH_SHORT).show()
+                  }
               }
 
               @androidx.annotation.OptIn(ExperimentalGetImage::class)
@@ -518,22 +590,27 @@ jobs:
                       val wristDistance = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
                       val tipDistance = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
 
-                      val isHandsTouching = (wristDistance < avgHandSize * 1.3) && (tipDistance < avgHandSize * 0.9)
-                      val isFingersUpward = (tipA.y() < wristA.y() - 0.03f) && (tipB.y() < wristB.y() - 0.03f)
+                      // 1. Hands touching each other
+                      val isHandsTouching = (wristDistance < avgHandSize * 1.35) && (tipDistance < avgHandSize * 0.95)
+
+                      // 2. Upright fingertips (above wrists)
+                      val isFingersUpward = (tipA.y() < wristA.y() - 0.02f) && (tipB.y() < wristB.y() - 0.02f)
+
+                      // 3. Sitting or standing height (Chest to Face area)
                       val avgYPosition = (wristA.y() + wristB.y() + tipA.y() + tipB.y()) / 4.0f
-                      val isFaceToChestZone = avgYPosition in 0.10f..0.85f
+                      val isFaceToChestZone = avgYPosition in 0.08f..0.88f
 
                       if (isHandsTouching && isFingersUpward && isFaceToChestZone) {
                           val currentTime = System.currentTimeMillis()
-                          if (currentTime - lastTriggerTime > 4000) {
+                          if (currentTime - lastTriggerTime > 4000) { // 4 second cooldown
                               lastTriggerTime = currentTime
                               runOnUiThread {
-                                  statusText.text = "🙏 Namaskar Detected! Playing Audio."
+                                  statusText.text = "🙏 Namaskar! Playing Audio..."
                                   statusText.setBackgroundColor(0xDD2E7D32.toInt())
-                                  playRandomAudioOnLoudspeaker()
+                                  playAudioOnLoudspeaker()
                               }
                               Handler(Looper.getMainLooper()).postDelayed({
-                                  statusText.text = "Waiting for Namaskar gesture..."
+                                  statusText.text = "Waiting for Namaskar..."
                                   statusText.setBackgroundColor(0xCC000000.toInt())
                               }, 3500)
                           }
@@ -541,18 +618,10 @@ jobs:
                   }
               }
 
-              private fun playRandomAudioOnLoudspeaker() {
-                  if (audioFilesList.isEmpty()) {
-                      Toast.makeText(this, "Namaskar detected! Please add audio files first.", Toast.LENGTH_SHORT).show()
-                      return
-                  }
-
-                  val randomFile = audioFilesList.random()
-
+              private fun playAudioOnLoudspeaker() {
                   try {
                       mediaPlayer?.release()
                       mediaPlayer = MediaPlayer().apply {
-                          setDataSource(randomFile.absolutePath)
                           setAudioAttributes(
                               AudioAttributes.Builder()
                                   .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -560,11 +629,35 @@ jobs:
                                   .build()
                           )
 
+                          // Always route through phone built-in loud speaker
                           val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                               val speakerDevice = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                                   .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                               speakerDevice?.let { preferredDevice = it }
+                          }
+
+                          if (rbAudioOm.isChecked) {
+                              // Play Built-in OM sound
+                              val rawResId = resources.getIdentifier("om", "raw", packageName)
+                              if (rawResId != 0) {
+                                  val afd = resources.openRawResourceFd(rawResId)
+                                  setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                                  afd.close()
+                              } else {
+                                  val omFile = File(filesDir, "om_chant.wav")
+                                  setDataSource(omFile.absolutePath)
+                              }
+                          } else {
+                              // Play Custom Audio
+                              if (audioFilesList.isEmpty()) {
+                                  Toast.makeText(this@MainActivity, "No custom files! Playing 'OM' instead.", Toast.LENGTH_SHORT).show()
+                                  val omFile = File(filesDir, "om_chant.wav")
+                                  setDataSource(omFile.absolutePath)
+                              } else {
+                                  val randomFile = audioFilesList.random()
+                                  setDataSource(randomFile.absolutePath)
+                              }
                           }
 
                           prepare()
@@ -575,10 +668,110 @@ jobs:
                   }
               }
 
+              // Generates a 136.1 Hz sacred OM meditation chime if raw resource is missing
+              private fun ensureOmChantReady() {
+                  val omFile = File(filesDir, "om_chant.wav")
+                  if (omFile.exists() && omFile.length() > 5000) return
+
+                  val sampleRate = 22050
+                  val totalSamples = (sampleRate * 2.8).toInt()
+                  val rawData = ShortArray(totalSamples)
+
+                  val freq1 = 136.1 // Sacred OM frequency
+                  val freq2 = 272.2
+                  val freq3 = 408.3
+
+                  for (i in 0 until totalSamples) {
+                      val t = i.toDouble() / sampleRate
+                      val envelope = (if (t < 0.3) t / 0.3 else 1.0) * Math.exp(-1.1 * t)
+                      val sample = (0.6 * Math.sin(2.0 * Math.PI * freq1 * t) +
+                                    0.28 * Math.sin(2.0 * Math.PI * freq2 * t) +
+                                    0.12 * Math.sin(2.0 * Math.PI * freq3 * t)) * envelope
+                      rawData[i] = (sample * 32000).toInt().coerceIn(-32767, 32767).toShort()
+                  }
+
+                  try {
+                      FileOutputStream(omFile).use { fos ->
+                          writeWavHeader(fos, totalSamples * 2, sampleRate)
+                          val byteBuffer = java.nio.ByteBuffer.allocate(totalSamples * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                          for (s in rawData) byteBuffer.putShort(s)
+                          fos.write(byteBuffer.array())
+                      }
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
+              }
+
+              private fun writeWavHeader(out: FileOutputStream, pcmSize: Int, sampleRate: Int) {
+                  val totalSize = pcmSize + 36
+                  val byteRate = sampleRate * 2
+                  val header = ByteArray(44)
+                  header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+                  header[4] = (totalSize and 0xff).toByte(); header[5] = ((totalSize shr 8) and 0xff).toByte()
+                  header[6] = ((totalSize shr 16) and 0xff).toByte(); header[7] = ((totalSize shr 24) and 0xff).toByte()
+                  header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+                  header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+                  header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0
+                  header[20] = 1; header[21] = 0; header[22] = 1; header[23] = 0
+                  header[24] = (sampleRate and 0xff).toByte(); header[25] = ((sampleRate shr 8) and 0xff).toByte()
+                  header[26] = ((sampleRate shr 16) and 0xff).toByte(); header[27] = ((sampleRate shr 24) and 0xff).toByte()
+                  header[28] = (byteRate and 0xff).toByte(); header[29] = ((byteRate shr 8) and 0xff).toByte()
+                  header[30] = ((byteRate shr 16) and 0xff).toByte(); header[31] = ((byteRate shr 24) and 0xff).toByte()
+                  header[32] = 2; header[33] = 0; header[34] = 16; header[35] = 0
+                  header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+                  header[40] = (pcmSize and 0xff).toByte(); header[41] = ((pcmSize shr 8) and 0xff).toByte()
+                  header[42] = ((pcmSize shr 16) and 0xff).toByte(); header[43] = ((pcmSize shr 24) and 0xff).toByte()
+                  out.write(header)
+              }
+
+              private fun importAudioFiles(uris: List<Uri>) {
+                  val audioDir = File(filesDir, "audio_tracks").apply { if (!exists()) mkdirs() }
+                  var count = 0
+                  uris.forEach { uri ->
+                      try {
+                          contentResolver.openInputStream(uri)?.use { input ->
+                              val destFile = File(audioDir, "track_${System.currentTimeMillis()}_${Random.nextInt(1000)}.mp3")
+                              FileOutputStream(destFile).use { output -> input.copyTo(output) }
+                              audioFilesList.add(destFile)
+                              count++
+                          }
+                      } catch (e: Exception) { e.printStackTrace() }
+                  }
+                  updateAudioCountUI()
+                  rbAudioCustom.isChecked = true
+                  Toast.makeText(this, "Added $count audio(s) & switched to Custom Audio", Toast.LENGTH_SHORT).show()
+              }
+
+              private fun loadExistingAudioFiles() {
+                  audioFilesList.clear()
+                  val audioDir = File(filesDir, "audio_tracks")
+                  if (audioDir.exists()) {
+                      audioDir.listFiles()?.filter { it.isFile }?.let { audioFilesList.addAll(it) }
+                  }
+                  updateAudioCountUI()
+              }
+
+              private fun updateAudioCountUI() {
+                  audioFilesCountText.text = "Custom Audios Loaded: ${audioFilesList.size}"
+              }
+
+              private fun initMediaPipe() {
+                  val baseOptions = BaseOptions.builder().setModelAssetPath("hand_landmarker.task").build()
+                  val options = HandLandmarker.HandLandmarkerOptions.builder()
+                      .setBaseOptions(baseOptions)
+                      .setRunningMode(RunningMode.IMAGE)
+                      .setNumHands(2)
+                      .setMinHandDetectionConfidence(0.5f)
+                      .setMinHandPresenceConfidence(0.5f)
+                      .setMinTrackingConfidence(0.5f)
+                      .build()
+                  handLandmarker = HandLandmarker.createFromOptions(this, options)
+              }
+
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
                   if (requestCode == 101 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                      startCamera()
+                      initCameraProvider()
                   } else {
                       Toast.makeText(this, "Camera permission is required", Toast.LENGTH_SHORT).show()
                   }
@@ -588,9 +781,7 @@ jobs:
                   super.onDestroy()
                   cameraExecutor.shutdown()
                   mediaPlayer?.release()
-                  if (::handLandmarker.isInitialized) {
-                      handLandmarker.close()
-                  }
+                  if (::handLandmarker.isInitialized) handLandmarker.close()
               }
           }
           EOF
