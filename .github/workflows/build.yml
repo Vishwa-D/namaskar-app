@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 2
-                  versionName = "2.0"
+                  versionCode = 3
+                  versionName = "3.0"
               }
 
               buildTypes {
@@ -152,7 +152,7 @@ jobs:
           </manifest>
           EOF
 
-          # 8. User Interface Layout
+          # 8. User Interface Layout (Completely Blank Black Overlay)
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -311,49 +311,20 @@ jobs:
                   </LinearLayout>
               </com.google.android.material.card.MaterialCardView>
 
-              <!-- Black Screen Overlay (Stealth Mode) -->
-              <FrameLayout
+              <!-- 100% Pitch-Black Overlay: Pure Black, Zero Buttons, Zero Text -->
+              <View
                   android:id="@+id/blackScreenOverlay"
                   android:layout_width="match_parent"
                   android:layout_height="match_parent"
                   android:background="#000000"
                   android:clickable="true"
                   android:focusable="true"
-                  android:visibility="gone">
-
-                  <LinearLayout
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_gravity="bottom"
-                      android:gravity="center_horizontal"
-                      android:orientation="vertical"
-                      android:padding="24dp">
-
-                      <Button
-                          android:id="@+id/btnDisableStealth"
-                          android:layout_width="wrap_content"
-                          android:layout_height="wrap_content"
-                          android:backgroundTint="#212121"
-                          android:paddingStart="24dp"
-                          android:paddingEnd="24dp"
-                          android:text="☀️ Disable Black Screen Mode"
-                          android:textColor="#E0E0E0" />
-
-                      <TextView
-                          android:layout_width="wrap_content"
-                          android:layout_height="wrap_content"
-                          android:layout_marginTop="8dp"
-                          android:alpha="0.3"
-                          android:text="or double-tap anywhere on screen to exit"
-                          android:textColor="#FFFFFF"
-                          android:textSize="11sp" />
-                  </LinearLayout>
-              </FrameLayout>
+                  android:visibility="gone" />
 
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Complete App Logic
+          # 9. Application Logic (Immersive Fullscreen Blackout + Double Tap Wake)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -374,6 +345,8 @@ jobs:
           import android.view.GestureDetector
           import android.view.MotionEvent
           import android.view.View
+          import android.view.WindowInsets
+          import android.view.WindowInsetsController
           import android.view.WindowManager
           import android.widget.*
           import androidx.activity.result.contract.ActivityResultContracts
@@ -407,8 +380,7 @@ jobs:
               private lateinit var btnTestAudio: Button
               private lateinit var btnClearAudio: Button
               private lateinit var btnEnableStealth: Button
-              private lateinit var btnDisableStealth: Button
-              private lateinit var blackScreenOverlay: FrameLayout
+              private lateinit var blackScreenOverlay: View
 
               private var cameraProvider: ProcessCameraProvider? = null
               private var lensFacing = CameraSelector.LENS_FACING_BACK
@@ -440,7 +412,6 @@ jobs:
                   btnTestAudio = findViewById(R.id.btnTestAudio)
                   btnClearAudio = findViewById(R.id.btnClearAudio)
                   btnEnableStealth = findViewById(R.id.btnEnableStealth)
-                  btnDisableStealth = findViewById(R.id.btnDisableStealth)
                   blackScreenOverlay = findViewById(R.id.blackScreenOverlay)
 
                   cameraExecutor = Executors.newSingleThreadExecutor()
@@ -458,7 +429,6 @@ jobs:
               }
 
               private fun setupUIEvents() {
-                  // 1. Camera Flip (Front vs Rear)
                   btnSwitchCamera.setOnClickListener {
                       lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                           CameraSelector.LENS_FACING_FRONT
@@ -469,7 +439,6 @@ jobs:
                       bindCameraUseCases()
                   }
 
-                  // 2. Audio Selection & Testing
                   btnAddAudio.setOnClickListener {
                       selectAudiosLauncher.launch("audio/*")
                   }
@@ -488,20 +457,16 @@ jobs:
                       Toast.makeText(this, "Cleared custom audios (Switched to OM)", Toast.LENGTH_SHORT).show()
                   }
 
-                  // 3. Black Screen Mode Controls (Enable and Disable)
+                  // Enter 100% pure black mode (Hides system status & navigation bars)
                   btnEnableStealth.setOnClickListener {
-                      blackScreenOverlay.visibility = View.VISIBLE
+                      enterBlackScreenMode()
                   }
 
-                  btnDisableStealth.setOnClickListener {
-                      blackScreenOverlay.visibility = View.GONE
-                  }
-
-                  // Double tap to wake from black screen
+                  // Double tap anywhere to exit black screen mode
                   val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                       override fun onDoubleTap(e: MotionEvent): Boolean {
                           if (blackScreenOverlay.visibility == View.VISIBLE) {
-                              blackScreenOverlay.visibility = View.GONE
+                              exitBlackScreenMode()
                               return true
                           }
                           return super.onDoubleTap(e)
@@ -511,6 +476,38 @@ jobs:
                   blackScreenOverlay.setOnTouchListener { _, event ->
                       gestureDetector.onTouchEvent(event)
                       true
+                  }
+              }
+
+              private fun enterBlackScreenMode() {
+                  Toast.makeText(this, "Screen turned off. Double-tap to wake up.", Toast.LENGTH_SHORT).show()
+                  blackScreenOverlay.visibility = View.VISIBLE
+
+                  // Hide system navigation bar and status bar completely
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                      window.insetsController?.let {
+                          it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                          it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                      }
+                  } else {
+                      @Suppress("DEPRECATION")
+                      window.decorView.systemUiVisibility = (
+                          View.SYSTEM_UI_FLAG_FULLSCREEN
+                          or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                          or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                      )
+                  }
+              }
+
+              private fun exitBlackScreenMode() {
+                  blackScreenOverlay.visibility = View.GONE
+
+                  // Restore system bars
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                      window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                  } else {
+                      @Suppress("DEPRECATION")
+                      window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
                   }
               }
 
@@ -590,19 +587,14 @@ jobs:
                       val wristDistance = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
                       val tipDistance = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
 
-                      // 1. Hands touching each other
                       val isHandsTouching = (wristDistance < avgHandSize * 1.35) && (tipDistance < avgHandSize * 0.95)
-
-                      // 2. Upright fingertips (above wrists)
                       val isFingersUpward = (tipA.y() < wristA.y() - 0.02f) && (tipB.y() < wristB.y() - 0.02f)
-
-                      // 3. Sitting or standing height (Chest to Face area)
                       val avgYPosition = (wristA.y() + wristB.y() + tipA.y() + tipB.y()) / 4.0f
                       val isFaceToChestZone = avgYPosition in 0.08f..0.88f
 
                       if (isHandsTouching && isFingersUpward && isFaceToChestZone) {
                           val currentTime = System.currentTimeMillis()
-                          if (currentTime - lastTriggerTime > 4000) { // 4 second cooldown
+                          if (currentTime - lastTriggerTime > 4000) {
                               lastTriggerTime = currentTime
                               runOnUiThread {
                                   statusText.text = "🙏 Namaskar! Playing Audio..."
@@ -629,7 +621,6 @@ jobs:
                                   .build()
                           )
 
-                          // Always route through phone built-in loud speaker
                           val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                               val speakerDevice = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -638,7 +629,6 @@ jobs:
                           }
 
                           if (rbAudioOm.isChecked) {
-                              // Play Built-in OM sound
                               val rawResId = resources.getIdentifier("om", "raw", packageName)
                               if (rawResId != 0) {
                                   val afd = resources.openRawResourceFd(rawResId)
@@ -649,9 +639,7 @@ jobs:
                                   setDataSource(omFile.absolutePath)
                               }
                           } else {
-                              // Play Custom Audio
                               if (audioFilesList.isEmpty()) {
-                                  Toast.makeText(this@MainActivity, "No custom files! Playing 'OM' instead.", Toast.LENGTH_SHORT).show()
                                   val omFile = File(filesDir, "om_chant.wav")
                                   setDataSource(omFile.absolutePath)
                               } else {
@@ -668,7 +656,6 @@ jobs:
                   }
               }
 
-              // Generates a 136.1 Hz sacred OM meditation chime if raw resource is missing
               private fun ensureOmChantReady() {
                   val omFile = File(filesDir, "om_chant.wav")
                   if (omFile.exists() && omFile.length() > 5000) return
@@ -677,7 +664,7 @@ jobs:
                   val totalSamples = (sampleRate * 2.8).toInt()
                   val rawData = ShortArray(totalSamples)
 
-                  val freq1 = 136.1 // Sacred OM frequency
+                  val freq1 = 136.1
                   val freq2 = 272.2
                   val freq3 = 408.3
 
