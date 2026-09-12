@@ -32,10 +32,16 @@ jobs:
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/assets
 
-          # 1. Download Google MediaPipe Hand Detection AI Model
+          # 1. gradle.properties (Enables AndroidX support)
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          # 2. Download Google MediaPipe Hand Detection AI Model
           curl -L -o app/src/main/assets/hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 
-          # 2. Settings configuration
+          # 3. Settings configuration
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -55,7 +61,7 @@ jobs:
           include(":app")
           EOF
 
-          # 3. Root build configuration
+          # 4. Root build configuration
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.3.2" apply false
@@ -63,7 +69,7 @@ jobs:
           }
           EOF
 
-          # 4. App dependencies configuration
+          # 5. App build configuration
           cat << 'EOF' > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -112,7 +118,7 @@ jobs:
           }
           EOF
 
-          # 5. App permissions and manifest
+          # 6. Android Manifest
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -142,7 +148,7 @@ jobs:
           </manifest>
           EOF
 
-          # 6. Screen UI Layout (Camera + Audio Buttons + Stealth Black Screen)
+          # 7. UI Layout
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -257,7 +263,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 7. Complete Application Logic
+          # 8. Main Application Logic
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -327,8 +333,6 @@ jobs:
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  
-                  // Keep screen awake so the camera never stops
                   window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                   setContentView(R.layout.activity_main)
 
@@ -505,7 +509,6 @@ jobs:
                       val tipA = handA[12]
                       val tipB = handB[12]
 
-                      // Scale invariant: adapts to sitting close or standing further away
                       val handScaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
                       val handScaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
                       val avgHandSize = (handScaleA + handScaleB) / 2.0
@@ -515,13 +518,8 @@ jobs:
                       val wristDistance = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
                       val tipDistance = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
 
-                      // 1. Hands touching
                       val isHandsTouching = (wristDistance < avgHandSize * 1.3) && (tipDistance < avgHandSize * 0.9)
-
-                      // 2. Upright hand posture
                       val isFingersUpward = (tipA.y() < wristA.y() - 0.03f) && (tipB.y() < wristB.y() - 0.03f)
-
-                      // 3. Covers chest to face height
                       val avgYPosition = (wristA.y() + wristB.y() + tipA.y() + tipB.y()) / 4.0f
                       val isFaceToChestZone = avgYPosition in 0.10f..0.85f
 
@@ -562,9 +560,8 @@ jobs:
                                   .build()
                           )
 
-                          // Always route through phone loudspeaker
                           val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                               val speakerDevice = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                                   .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                               speakerDevice?.let { preferredDevice = it }
