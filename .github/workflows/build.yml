@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 4
-                  versionName = "4.0"
+                  versionCode = 5
+                  versionName = "5.0"
               }
 
               buildTypes {
@@ -152,7 +152,7 @@ jobs:
           </manifest>
           EOF
 
-          # 8. User Interface Layout (High Elevation Black Overlay)
+          # 8. User Interface Layout
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -227,7 +227,6 @@ jobs:
                           android:textSize="13sp"
                           android:textStyle="bold" />
 
-                      <!-- Sound Mode Radio Buttons -->
                       <RadioGroup
                           android:id="@+id/radioGroupAudio"
                           android:layout_width="match_parent"
@@ -262,7 +261,6 @@ jobs:
                           android:textColor="#9E9E9E"
                           android:textSize="12sp" />
 
-                      <!-- Audio Buttons: Add, Test, Clear -->
                       <LinearLayout
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
@@ -300,7 +298,6 @@ jobs:
                               android:textSize="12sp" />
                       </LinearLayout>
 
-                      <!-- Enable Black Screen Button -->
                       <Button
                           android:id="@+id/btnEnableStealth"
                           android:layout_width="match_parent"
@@ -312,7 +309,7 @@ jobs:
                   </LinearLayout>
               </com.google.android.material.card.MaterialCardView>
 
-              <!-- Absolute Pure Black Overlay (Elevated above all buttons and cards) -->
+              <!-- Absolute Pure Black Overlay -->
               <View
                   android:id="@+id/blackScreenOverlay"
                   android:layout_width="match_parent"
@@ -326,7 +323,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Gesture Lock During Playback + Sequential 1.mp3, 2.mp3 Sort)
+          # 9. Application Logic (Improvised High-Accuracy Gesture Detection)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -368,6 +365,7 @@ jobs:
           import java.io.FileOutputStream
           import java.util.concurrent.ExecutorService
           import java.util.concurrent.Executors
+          import kotlin.math.abs
           import kotlin.math.hypot
 
           class MainActivity : AppCompatActivity() {
@@ -395,7 +393,6 @@ jobs:
               private val audioFilesList = mutableListOf<File>()
               private var currentAudioIndex = 0
 
-              // Prevents any gesture detection while audio is playing
               @Volatile
               private var isAudioPlaying = false
 
@@ -467,12 +464,10 @@ jobs:
                       Toast.makeText(this, "Cleared custom audios (Switched to OM)", Toast.LENGTH_SHORT).show()
                   }
 
-                  // 100% PITCH BLACK MODE: Hides buttons and settings completely
                   btnEnableStealth.setOnClickListener {
                       enterBlackScreenMode()
                   }
 
-                  // Double tap anywhere on black screen to wake it up
                   val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                       override fun onDoubleTap(e: MotionEvent): Boolean {
                           if (blackScreenOverlay.visibility == View.VISIBLE) {
@@ -490,15 +485,12 @@ jobs:
               }
 
               private fun enterBlackScreenMode() {
-                  Toast.makeText(this, "Screen is now OFF. Double-tap screen to wake up.", Toast.LENGTH_SHORT).show()
-                  
-                  // Completely hide buttons and top bar so nothing can shine through
+                  Toast.makeText(this, "Screen is OFF. Double-tap anywhere to wake.", Toast.LENGTH_SHORT).show()
                   controlsCard.visibility = View.GONE
                   topBar.visibility = View.GONE
                   blackScreenOverlay.visibility = View.VISIBLE
                   blackScreenOverlay.bringToFront()
 
-                  // Hide system navigation bar and status bar
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                       window.insetsController?.let {
                           it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -564,10 +556,7 @@ jobs:
               @androidx.annotation.OptIn(ExperimentalGetImage::class)
               private fun processCameraFrame(imageProxy: ImageProxy) {
                   try {
-                      // Rule: Do NOT process or recognise gestures while an audio is actively playing!
-                      if (isAudioPlaying) {
-                          return
-                      }
+                      if (isAudioPlaying) return
 
                       val bitmap = imageProxy.toBitmap()
                       val rotation = imageProxy.imageInfo.rotationDegrees
@@ -588,8 +577,12 @@ jobs:
                   }
               }
 
+              /**
+               * IMPROVISED DETECTION ALGORITHM:
+               * 1. Uses Palm Knuckles (Landmark 9) rather than wrists - knuckles ALWAYS touch in Namaskar.
+               * 2. Highly forgiving angle and proximity tolerances for sitting and standing.
+               */
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
-                  // Guard check again: Do nothing if already playing
                   if (isAudioPlaying) return
 
                   val hands = result.landmarks()
@@ -597,32 +590,45 @@ jobs:
                       val handA = hands[0]
                       val handB = hands[1]
 
+                      // Landmark 0: Wrist
+                      // Landmark 9: Middle Finger Knuckle (Center of Palm)
+                      // Landmark 12: Middle Fingertip
                       val wristA = handA[0]
                       val wristB = handB[0]
+                      val palmA = handA[9]
+                      val palmB = handB[9]
                       val tipA = handA[12]
                       val tipB = handB[12]
 
-                      val handScaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
-                      val handScaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
-                      val avgHandSize = (handScaleA + handScaleB) / 2.0
+                      // Dynamic scale adaptation based on hand length in pixels
+                      val scaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
+                      val scaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
+                      val avgHandSize = (scaleA + scaleB) / 2.0
 
-                      if (avgHandSize < 0.05) return
+                      if (avgHandSize < 0.035) return // Too far back in the room
 
-                      val wristDistance = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
-                      val tipDistance = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
+                      // Distance calculations
+                      val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
+                      val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
+                      val wristDist = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
 
-                      // 1. Hands touching each other
-                      val isHandsTouching = (wristDistance < avgHandSize * 1.35) && (tipDistance < avgHandSize * 0.95)
+                      // 1. Hands Together Check:
+                      // Palms together OR fingertips close together with wrists in proximity
+                      val isHandsTogether = (palmDist < avgHandSize * 1.45) ||
+                              (tipDist < avgHandSize * 1.35 && wristDist < avgHandSize * 2.1)
 
-                      // 2. Upright fingertips (above wrists)
-                      val isFingersUpward = (tipA.y() < wristA.y() - 0.02f) && (tipB.y() < wristB.y() - 0.02f)
+                      // 2. Upward Fingertip Orientation (allowing natural forward/sideways tilt):
+                      val isUpwardA = (tipA.y() < wristA.y() + 0.02f) && (abs(tipA.x() - wristA.x()) < abs(tipA.y() - wristA.y()) * 1.9)
+                      val isUpwardB = (tipB.y() < wristB.y() + 0.02f) && (abs(tipB.x() - wristB.x()) < abs(tipB.y() - wristB.y()) * 1.9)
 
-                      // 3. Covers Chest to Face area
-                      val avgYPosition = (wristA.y() + wristB.y() + tipA.y() + tipB.y()) / 4.0f
-                      val isFaceToChestZone = avgYPosition in 0.08f..0.88f
+                      // 3. Hands at roughly equal height:
+                      val isSameLevel = abs(palmA.y() - palmB.y()) < (avgHandSize * 1.1)
 
-                      if (isHandsTouching && isFingersUpward && isFaceToChestZone) {
-                          // Gesture recognised! Immediately lock recognition and play audio
+                      // 4. Height Zone (Covers Lower Chest to Forehead):
+                      val avgY = (palmA.y() + palmB.y()) / 2.0f
+                      val isInZone = avgY in 0.05f..0.94f
+
+                      if (isHandsTogether && (isUpwardA || isUpwardB) && isSameLevel && isInZone) {
                           isAudioPlaying = true
                           runOnUiThread {
                               statusText.text = "🙏 Namaskar Detected! Playing Audio..."
@@ -666,14 +672,12 @@ jobs:
                                   val omFile = File(filesDir, "om_chant.wav")
                                   setDataSource(omFile.absolutePath)
                               } else {
-                                  // Pick sequential audio: 1.mp3 -> 2.mp3 -> 3.mp3...
                                   if (currentAudioIndex >= audioFilesList.size) {
                                       currentAudioIndex = 0
                                   }
                                   val currentFile = audioFilesList[currentAudioIndex]
                                   val playingTrackNum = currentAudioIndex + 1
 
-                                  // Advance to the next audio for the next time
                                   currentAudioIndex = (currentAudioIndex + 1) % audioFilesList.size
                                   updateAudioCountUI()
 
@@ -685,7 +689,6 @@ jobs:
                               }
                           }
 
-                          // When audio finishes, wait 1.5s grace period before unlocking camera gesture recognition
                           setOnCompletionListener { mp ->
                               mp.release()
                               mediaPlayer = null
@@ -693,7 +696,7 @@ jobs:
                                   isAudioPlaying = false
                                   statusText.text = "Waiting for Namaskar..."
                                   statusText.setBackgroundColor(0xCC000000.toInt())
-                              }, 1500)
+                              }, 1200)
                           }
 
                           setOnErrorListener { mp, _, _ ->
@@ -762,7 +765,6 @@ jobs:
                   updateAudioCountUI()
               }
 
-              // Natural sorting: 1.mp3, 2.mp3, ... 9.mp3, 10.mp3
               private fun sortAudioFilesNumerically() {
                   audioFilesList.sortWith(Comparator { file1, file2 ->
                       val num1 = Regex("\\d+").find(file1.name)?.value?.toIntOrNull()
@@ -845,9 +847,9 @@ jobs:
                       .setBaseOptions(baseOptions)
                       .setRunningMode(RunningMode.IMAGE)
                       .setNumHands(2)
-                      .setMinHandDetectionConfidence(0.5f)
-                      .setMinHandPresenceConfidence(0.5f)
-                      .setMinTrackingConfidence(0.5f)
+                      .setMinHandDetectionConfidence(0.32f)
+                      .setMinHandPresenceConfidence(0.32f)
+                      .setMinTrackingConfidence(0.32f)
                       .build()
                   handLandmarker = HandLandmarker.createFromOptions(this, options)
               }
