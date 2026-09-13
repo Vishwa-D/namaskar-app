@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 3
-                  versionName = "3.0"
+                  versionCode = 4
+                  versionName = "4.0"
               }
 
               buildTypes {
@@ -152,11 +152,12 @@ jobs:
           </manifest>
           EOF
 
-          # 8. User Interface Layout (Completely Blank Black Overlay)
+          # 8. User Interface Layout (High Elevation Black Overlay)
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:app="http://schemas.android.com/apk/res-auto"
+              android:id="@+id/rootContainer"
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:background="#000000">
@@ -247,7 +248,7 @@ jobs:
                               android:id="@+id/rbAudioCustom"
                               android:layout_width="wrap_content"
                               android:layout_height="wrap_content"
-                              android:text="Play From Custom Audios"
+                              android:text="Play Sequenced Audios (1.mp3, 2.mp3...)"
                               android:textColor="#FFFFFF"
                               android:textSize="14sp" />
                       </RadioGroup>
@@ -257,7 +258,7 @@ jobs:
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
                           android:layout_marginStart="4dp"
-                          android:text="Custom Audios Loaded: 0"
+                          android:text="Custom Audios: 0 (Add 1.mp3, 2.mp3...)"
                           android:textColor="#9E9E9E"
                           android:textSize="12sp" />
 
@@ -274,7 +275,7 @@ jobs:
                               android:layout_height="wrap_content"
                               android:layout_marginEnd="4dp"
                               android:layout_weight="1"
-                              android:text="+ Add"
+                              android:text="+ Add Files"
                               android:textSize="12sp" />
 
                           <Button
@@ -284,7 +285,7 @@ jobs:
                               android:layout_height="wrap_content"
                               android:layout_marginEnd="4dp"
                               android:layout_weight="1"
-                              android:text="▶ Test"
+                              android:text="▶ Test Next"
                               android:textColor="#4CAF50"
                               android:textSize="12sp" />
 
@@ -311,20 +312,21 @@ jobs:
                   </LinearLayout>
               </com.google.android.material.card.MaterialCardView>
 
-              <!-- 100% Pitch-Black Overlay: Pure Black, Zero Buttons, Zero Text -->
+              <!-- Absolute Pure Black Overlay (Elevated above all buttons and cards) -->
               <View
                   android:id="@+id/blackScreenOverlay"
                   android:layout_width="match_parent"
                   android:layout_height="match_parent"
                   android:background="#000000"
                   android:clickable="true"
+                  android:elevation="100dp"
                   android:focusable="true"
                   android:visibility="gone" />
 
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Immersive Fullscreen Blackout + Double Tap Wake)
+          # 9. Application Logic (Gesture Lock During Playback + Sequential 1.mp3, 2.mp3 Sort)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -342,6 +344,7 @@ jobs:
           import android.os.Bundle
           import android.os.Handler
           import android.os.Looper
+          import android.provider.OpenableColumns
           import android.view.GestureDetector
           import android.view.MotionEvent
           import android.view.View
@@ -366,11 +369,12 @@ jobs:
           import java.util.concurrent.ExecutorService
           import java.util.concurrent.Executors
           import kotlin.math.hypot
-          import kotlin.random.Random
 
           class MainActivity : AppCompatActivity() {
 
               private lateinit var previewView: PreviewView
+              private lateinit var topBar: View
+              private lateinit var controlsCard: View
               private lateinit var statusText: TextView
               private lateinit var btnSwitchCamera: Button
               private lateinit var audioFilesCountText: TextView
@@ -389,7 +393,11 @@ jobs:
               private var mediaPlayer: MediaPlayer? = null
 
               private val audioFilesList = mutableListOf<File>()
-              private var lastTriggerTime = 0L
+              private var currentAudioIndex = 0
+
+              // Prevents any gesture detection while audio is playing
+              @Volatile
+              private var isAudioPlaying = false
 
               private val selectAudiosLauncher = registerForActivityResult(
                   ActivityResultContracts.GetMultipleContents()
@@ -403,6 +411,8 @@ jobs:
                   setContentView(R.layout.activity_main)
 
                   previewView = findViewById(R.id.previewView)
+                  topBar = findViewById(R.id.topBar)
+                  controlsCard = findViewById(R.id.controlsCard)
                   statusText = findViewById(R.id.statusText)
                   btnSwitchCamera = findViewById(R.id.btnSwitchCamera)
                   audioFilesCountText = findViewById(R.id.audioFilesCountText)
@@ -445,24 +455,24 @@ jobs:
 
                   btnTestAudio.setOnClickListener {
                       playAudioOnLoudspeaker()
-                      Toast.makeText(this, "Testing sound on loudspeaker...", Toast.LENGTH_SHORT).show()
                   }
 
                   btnClearAudio.setOnClickListener {
                       val audioDir = File(filesDir, "audio_tracks")
                       if (audioDir.exists()) audioDir.listFiles()?.forEach { it.delete() }
                       audioFilesList.clear()
+                      currentAudioIndex = 0
                       updateAudioCountUI()
                       rbAudioOm.isChecked = true
                       Toast.makeText(this, "Cleared custom audios (Switched to OM)", Toast.LENGTH_SHORT).show()
                   }
 
-                  // Enter 100% pure black mode (Hides system status & navigation bars)
+                  // 100% PITCH BLACK MODE: Hides buttons and settings completely
                   btnEnableStealth.setOnClickListener {
                       enterBlackScreenMode()
                   }
 
-                  // Double tap anywhere to exit black screen mode
+                  // Double tap anywhere on black screen to wake it up
                   val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
                       override fun onDoubleTap(e: MotionEvent): Boolean {
                           if (blackScreenOverlay.visibility == View.VISIBLE) {
@@ -480,10 +490,15 @@ jobs:
               }
 
               private fun enterBlackScreenMode() {
-                  Toast.makeText(this, "Screen turned off. Double-tap to wake up.", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(this, "Screen is now OFF. Double-tap screen to wake up.", Toast.LENGTH_SHORT).show()
+                  
+                  // Completely hide buttons and top bar so nothing can shine through
+                  controlsCard.visibility = View.GONE
+                  topBar.visibility = View.GONE
                   blackScreenOverlay.visibility = View.VISIBLE
+                  blackScreenOverlay.bringToFront()
 
-                  // Hide system navigation bar and status bar completely
+                  // Hide system navigation bar and status bar
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                       window.insetsController?.let {
                           it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -501,8 +516,9 @@ jobs:
 
               private fun exitBlackScreenMode() {
                   blackScreenOverlay.visibility = View.GONE
+                  controlsCard.visibility = View.VISIBLE
+                  topBar.visibility = View.VISIBLE
 
-                  // Restore system bars
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                       window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
                   } else {
@@ -548,6 +564,11 @@ jobs:
               @androidx.annotation.OptIn(ExperimentalGetImage::class)
               private fun processCameraFrame(imageProxy: ImageProxy) {
                   try {
+                      // Rule: Do NOT process or recognise gestures while an audio is actively playing!
+                      if (isAudioPlaying) {
+                          return
+                      }
+
                       val bitmap = imageProxy.toBitmap()
                       val rotation = imageProxy.imageInfo.rotationDegrees
                       val rotatedBitmap = if (rotation != 0) {
@@ -568,6 +589,9 @@ jobs:
               }
 
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
+                  // Guard check again: Do nothing if already playing
+                  if (isAudioPlaying) return
+
                   val hands = result.landmarks()
                   if (hands.size >= 2) {
                       val handA = hands[0]
@@ -587,24 +611,23 @@ jobs:
                       val wristDistance = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
                       val tipDistance = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
 
+                      // 1. Hands touching each other
                       val isHandsTouching = (wristDistance < avgHandSize * 1.35) && (tipDistance < avgHandSize * 0.95)
+
+                      // 2. Upright fingertips (above wrists)
                       val isFingersUpward = (tipA.y() < wristA.y() - 0.02f) && (tipB.y() < wristB.y() - 0.02f)
+
+                      // 3. Covers Chest to Face area
                       val avgYPosition = (wristA.y() + wristB.y() + tipA.y() + tipB.y()) / 4.0f
                       val isFaceToChestZone = avgYPosition in 0.08f..0.88f
 
                       if (isHandsTouching && isFingersUpward && isFaceToChestZone) {
-                          val currentTime = System.currentTimeMillis()
-                          if (currentTime - lastTriggerTime > 4000) {
-                              lastTriggerTime = currentTime
-                              runOnUiThread {
-                                  statusText.text = "🙏 Namaskar! Playing Audio..."
-                                  statusText.setBackgroundColor(0xDD2E7D32.toInt())
-                                  playAudioOnLoudspeaker()
-                              }
-                              Handler(Looper.getMainLooper()).postDelayed({
-                                  statusText.text = "Waiting for Namaskar..."
-                                  statusText.setBackgroundColor(0xCC000000.toInt())
-                              }, 3500)
+                          // Gesture recognised! Immediately lock recognition and play audio
+                          isAudioPlaying = true
+                          runOnUiThread {
+                              statusText.text = "🙏 Namaskar Detected! Playing Audio..."
+                              statusText.setBackgroundColor(0xDD2E7D32.toInt())
+                              playAudioOnLoudspeaker()
                           }
                       }
                   }
@@ -643,9 +666,41 @@ jobs:
                                   val omFile = File(filesDir, "om_chant.wav")
                                   setDataSource(omFile.absolutePath)
                               } else {
-                                  val randomFile = audioFilesList.random()
-                                  setDataSource(randomFile.absolutePath)
+                                  // Pick sequential audio: 1.mp3 -> 2.mp3 -> 3.mp3...
+                                  if (currentAudioIndex >= audioFilesList.size) {
+                                      currentAudioIndex = 0
+                                  }
+                                  val currentFile = audioFilesList[currentAudioIndex]
+                                  val playingTrackNum = currentAudioIndex + 1
+
+                                  // Advance to the next audio for the next time
+                                  currentAudioIndex = (currentAudioIndex + 1) % audioFilesList.size
+                                  updateAudioCountUI()
+
+                                  runOnUiThread {
+                                      statusText.text = "🙏 Playing: ${currentFile.name} ($playingTrackNum/${audioFilesList.size})"
+                                  }
+
+                                  setDataSource(currentFile.absolutePath)
                               }
+                          }
+
+                          // When audio finishes, wait 1.5s grace period before unlocking camera gesture recognition
+                          setOnCompletionListener { mp ->
+                              mp.release()
+                              mediaPlayer = null
+                              Handler(Looper.getMainLooper()).postDelayed({
+                                  isAudioPlaying = false
+                                  statusText.text = "Waiting for Namaskar..."
+                                  statusText.setBackgroundColor(0xCC000000.toInt())
+                              }, 1500)
+                          }
+
+                          setOnErrorListener { mp, _, _ ->
+                              mp.release()
+                              mediaPlayer = null
+                              isAudioPlaying = false
+                              false
                           }
 
                           prepare()
@@ -653,6 +708,79 @@ jobs:
                       }
                   } catch (e: Exception) {
                       e.printStackTrace()
+                      isAudioPlaying = false
+                  }
+              }
+
+              private fun importAudioFiles(uris: List<Uri>) {
+                  val audioDir = File(filesDir, "audio_tracks").apply { if (!exists()) mkdirs() }
+                  var count = 0
+
+                  uris.forEach { uri ->
+                      try {
+                          val originalName = getFileNameFromUri(uri)
+                          contentResolver.openInputStream(uri)?.use { input ->
+                              val destFile = File(audioDir, originalName)
+                              FileOutputStream(destFile).use { output -> input.copyTo(output) }
+                              count++
+                          }
+                      } catch (e: Exception) {
+                          e.printStackTrace()
+                      }
+                  }
+
+                  loadExistingAudioFiles()
+                  currentAudioIndex = 0
+                  rbAudioCustom.isChecked = true
+                  updateAudioCountUI()
+                  Toast.makeText(this, "Added $count audio file(s) in sequence", Toast.LENGTH_SHORT).show()
+              }
+
+              private fun getFileNameFromUri(uri: Uri): String {
+                  var name = "track_${System.currentTimeMillis()}.mp3"
+                  contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                      val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                      if (nameIndex != -1 && cursor.moveToFirst()) {
+                          val displayName = cursor.getString(nameIndex)
+                          if (!displayName.isNullOrBlank()) {
+                              name = displayName
+                          }
+                      }
+                  }
+                  return name
+              }
+
+              private fun loadExistingAudioFiles() {
+                  audioFilesList.clear()
+                  val audioDir = File(filesDir, "audio_tracks")
+                  if (audioDir.exists()) {
+                      audioDir.listFiles()?.filter { it.isFile }?.let {
+                          audioFilesList.addAll(it)
+                      }
+                  }
+                  sortAudioFilesNumerically()
+                  updateAudioCountUI()
+              }
+
+              // Natural sorting: 1.mp3, 2.mp3, ... 9.mp3, 10.mp3
+              private fun sortAudioFilesNumerically() {
+                  audioFilesList.sortWith(Comparator { file1, file2 ->
+                      val num1 = Regex("\\d+").find(file1.name)?.value?.toIntOrNull()
+                      val num2 = Regex("\\d+").find(file2.name)?.value?.toIntOrNull()
+                      if (num1 != null && num2 != null) {
+                          num1.compareTo(num2)
+                      } else {
+                          file1.name.compareTo(file2.name, ignoreCase = true)
+                      }
+                  })
+              }
+
+              private fun updateAudioCountUI() {
+                  if (audioFilesList.isEmpty()) {
+                      audioFilesCountText.text = "Custom Audios: 0 (Add 1.mp3, 2.mp3...)"
+                  } else {
+                      val nextTrack = audioFilesList.getOrNull(currentAudioIndex)?.name ?: "1.mp3"
+                      audioFilesCountText.text = "Loaded: ${audioFilesList.size} tracks | Next: $nextTrack"
                   }
               }
 
@@ -709,37 +837,6 @@ jobs:
                   header[40] = (pcmSize and 0xff).toByte(); header[41] = ((pcmSize shr 8) and 0xff).toByte()
                   header[42] = ((pcmSize shr 16) and 0xff).toByte(); header[43] = ((pcmSize shr 24) and 0xff).toByte()
                   out.write(header)
-              }
-
-              private fun importAudioFiles(uris: List<Uri>) {
-                  val audioDir = File(filesDir, "audio_tracks").apply { if (!exists()) mkdirs() }
-                  var count = 0
-                  uris.forEach { uri ->
-                      try {
-                          contentResolver.openInputStream(uri)?.use { input ->
-                              val destFile = File(audioDir, "track_${System.currentTimeMillis()}_${Random.nextInt(1000)}.mp3")
-                              FileOutputStream(destFile).use { output -> input.copyTo(output) }
-                              audioFilesList.add(destFile)
-                              count++
-                          }
-                      } catch (e: Exception) { e.printStackTrace() }
-                  }
-                  updateAudioCountUI()
-                  rbAudioCustom.isChecked = true
-                  Toast.makeText(this, "Added $count audio(s) & switched to Custom Audio", Toast.LENGTH_SHORT).show()
-              }
-
-              private fun loadExistingAudioFiles() {
-                  audioFilesList.clear()
-                  val audioDir = File(filesDir, "audio_tracks")
-                  if (audioDir.exists()) {
-                      audioDir.listFiles()?.filter { it.isFile }?.let { audioFilesList.addAll(it) }
-                  }
-                  updateAudioCountUI()
-              }
-
-              private fun updateAudioCountUI() {
-                  audioFilesCountText.text = "Custom Audios Loaded: ${audioFilesList.size}"
               }
 
               private fun initMediaPipe() {
