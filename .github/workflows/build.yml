@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 9
-                  versionName = "9.0"
+                  versionCode = 10
+                  versionName = "10.0"
               }
 
               buildTypes {
@@ -319,7 +319,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Robust Calibrated Namaskar Detector with Live Feedback)
+          # 9. Application Logic (Smart Dual-Mode Namaskar Engine)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -392,7 +392,6 @@ jobs:
               @Volatile
               private var isAudioPlaying = false
 
-              // Stability confirmation counter
               private var consecutiveFrames = 0
 
               private val selectAudiosLauncher = registerForActivityResult(
@@ -589,8 +588,9 @@ jobs:
               }
 
               /**
-               * CALIBRATED ROBUST NAMASKAR DETECTOR:
-               * Reliably catches joined hands at 1-2.5m distance without hair-trigger false positives.
+               * SMART DUAL-MODE NAMASKAR ENGINE:
+               * Case A: 2 hands detected separately and joined together.
+               * Case B: Hands pressed tightly flat so AI merges them into 1 single upright silhouette!
                */
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
                   if (isAudioPlaying) {
@@ -605,54 +605,71 @@ jobs:
                       return
                   }
 
-                  if (hands.size == 1) {
-                      consecutiveFrames = 0
-                      updateStatusIfNotPlaying("1 hand seen — Join both hands 🙏", 0xCC000000.toInt())
-                      return
+                  var isNamaskar = false
+
+                  // CASE A: 2 hands detected
+                  if (hands.size >= 2) {
+                      val handA = hands[0]
+                      val handB = hands[1]
+
+                      val wristA = handA[0]
+                      val wristB = handB[0]
+                      val palmA = handA[9]
+                      val palmB = handB[9]
+                      val tipA = handA[12]
+                      val tipB = handB[12]
+
+                      val scaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
+                      val scaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
+                      val avgScale = (scaleA + scaleB) / 2.0
+
+                      if (avgScale >= 0.045) {
+                          val isUprightA = tipA.y() < wristA.y() - (avgScale * 0.10f)
+                          val isUprightB = tipB.y() < wristB.y() - (avgScale * 0.10f)
+
+                          val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
+                          val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
+
+                          val isClose = (palmDist < avgScale * 1.35) && (tipDist < avgScale * 1.25)
+                          val isSameLevel = abs(palmA.y() - palmB.y()) < (avgScale * 0.85f)
+                          val avgY = (palmA.y() + palmB.y()) / 2.0f
+                          val inZone = avgY in 0.05f..0.94f
+
+                          if (isUprightA && isUprightB && isClose && isSameLevel && inZone) {
+                              isNamaskar = true
+                          }
+                      }
                   }
 
-                  val handA = hands[0]
-                  val handB = hands[1]
+                  // CASE B: 1 hand detected (hands pressed tightly flat together into one silhouette)
+                  if (!isNamaskar && hands.size == 1) {
+                      val hand = hands[0]
+                      val wrist = hand[0]
+                      val mcp = hand[9]   // center knuckle
+                      val tip = hand[12]  // middle fingertip
+                      val indexTip = hand[8]
 
-                  val wristA = handA[0]
-                  val wristB = handB[0]
-                  val palmA = handA[9]  // Knuckle / Palm center
-                  val palmB = handB[9]
-                  val tipA = handA[12] // Middle fingertip
-                  val tipB = handB[12]
+                      val handHeight = wrist.y() - tip.y() // Positive when fingers point upward
+                      val handWidth = abs(wrist.x() - tip.x())
+                      val scale = hypot((wrist.x() - tip.x()).toDouble(), (wrist.y() - tip.y()).toDouble())
 
-                  val scaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
-                  val scaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
-                  val avgScale = (scaleA + scaleB) / 2.0
+                      if (scale >= 0.045) {
+                          // Fingers pointing clearly UP
+                          val isPointingUp = (handHeight > scale * 0.65) && (handWidth < handHeight * 0.80)
+                          // Extended fingers (fingertip is above knuckle)
+                          val isFingersExtended = (tip.y < mcp.y()) && (indexTip.y < hand[5].y())
+                          // Centered in front of the upper body (chest/neck/chin zone)
+                          val inCenterZone = (mcp.y in 0.08f..0.92f) && (mcp.x in 0.15f..0.85f)
 
-                  // 1. Distance filter (User must be within 2.5m of the phone)
-                  if (avgScale < 0.055) {
-                      consecutiveFrames = 0
-                      updateStatusIfNotPlaying("Please come closer to camera", 0xCC000000.toInt())
-                      return
+                          if (isPointingUp && isFingersExtended && inCenterZone) {
+                              isNamaskar = true
+                          }
+                      }
                   }
 
-                  // 2. Both fingertips must point upward (Y is smaller towards the top of screen)
-                  val isUprightA = tipA.y() < wristA.y() - (avgScale * 0.15f)
-                  val isUprightB = tipB.y() < wristB.y() - (avgScale * 0.15f)
-
-                  // 3. Measure distance between palms and tips
-                  val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
-                  val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
-
-                  // 4. Hands must be together: palms touching OR fingertips touching with close palms
-                  val isHandsTogether = (palmDist < avgScale * 0.85) && (tipDist < avgScale * 0.75)
-
-                  // 5. Vertical symmetry: Hands at roughly the same level
-                  val isSameLevel = abs(palmA.y() - palmB.y()) < (avgScale * 0.55f)
-
-                  // 6. Waist to face height range
-                  val avgY = (palmA.y() + palmB.y()) / 2.0f
-                  val isAboveWaist = avgY in 0.05f..0.92f
-
-                  if (isUprightA && isUprightB && isHandsTogether && isSameLevel && isAboveWaist) {
+                  if (isNamaskar) {
                       consecutiveFrames++
-                      // Requires 2 consecutive frames (~120ms hold)
+                      // Requires 2 consecutive frames (~100ms) for an instant, responsive trigger
                       if (consecutiveFrames >= 2) {
                           consecutiveFrames = 0
                           isAudioPlaying = true
@@ -664,7 +681,7 @@ jobs:
                       }
                   } else {
                       consecutiveFrames = 0
-                      updateStatusIfNotPlaying("Hands detected — Join in Namaskar 🙏", 0xCC000000.toInt())
+                      updateStatusIfNotPlaying("Join hands in Namaskar 🙏", 0xCC000000.toInt())
                   }
               }
 
@@ -876,9 +893,9 @@ jobs:
                       .setBaseOptions(baseOptions)
                       .setRunningMode(RunningMode.IMAGE)
                       .setNumHands(2)
-                      .setMinHandDetectionConfidence(0.35f) // Balanced sensitivity for touching hands
-                      .setMinHandPresenceConfidence(0.35f)
-                      .setMinTrackingConfidence(0.35f)
+                      .setMinHandDetectionConfidence(0.30f)
+                      .setMinHandPresenceConfidence(0.30f)
+                      .setMinTrackingConfidence(0.30f)
                       .build()
                   handLandmarker = HandLandmarker.createFromOptions(this, options)
               }
