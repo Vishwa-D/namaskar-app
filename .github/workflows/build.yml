@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 7
-                  versionName = "7.0"
+                  versionCode = 8
+                  versionName = "8.0"
               }
 
               buildTypes {
@@ -183,7 +183,7 @@ jobs:
                       android:background="#CC000000"
                       android:gravity="center_vertical"
                       android:padding="12dp"
-                      android:text="Waiting for someone close..."
+                      android:text="Waiting for Namaskar..."
                       android:textColor="#FFFFFF"
                       android:textSize="14sp"
                       android:textStyle="bold" />
@@ -319,7 +319,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Proximity Gating + Multi-frame Confirmation)
+          # 9. Application Logic (Optimized Single-Person Strict Biomechanical Namaskar Engine)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -393,11 +393,8 @@ jobs:
               @Volatile
               private var isAudioPlaying = false
 
-              // Stability counter: requires holding gesture for 3 consecutive frames (~200ms)
-              private var consecutiveGestureFrames = 0
-
-              // Proximity Gate: Hand must span at least 11% of camera frame height
-              private val MIN_PROXIMITY_SCALE = 0.11
+              // Stability counter: requires gesture held steadily across consecutive frames
+              private var consecutiveFrames = 0
 
               private val selectAudiosLauncher = registerForActivityResult(
                   ActivityResultContracts.GetMultipleContents()
@@ -559,7 +556,10 @@ jobs:
               @androidx.annotation.OptIn(ExperimentalGetImage::class)
               private fun processCameraFrame(imageProxy: ImageProxy) {
                   try {
-                      if (isAudioPlaying) return
+                      if (isAudioPlaying) {
+                          consecutiveFrames = 0
+                          return
+                      }
 
                       val bitmap = imageProxy.toBitmap()
                       val rotation = imageProxy.imageInfo.rotationDegrees
@@ -580,113 +580,29 @@ jobs:
                   }
               }
 
-              private fun computeHandScale(hand: List<NormalizedLandmark>): Double {
-                  val wrist = hand[0]
-                  val middleTip = hand[12]
-                  return hypot((wrist.x() - middleTip.x()).toDouble(), (wrist.y() - middleTip.y()).toDouble())
-              }
-
               /**
-               * PROXIMITY-GATED & CONFIRMED NAMASKAR GESTURE DETECTOR:
-               * 1. Proximity Filter: Hand size MUST exceed MIN_PROXIMITY_SCALE (user is close to phone).
-               * 2. Foreground Dominance: Rejects smaller background people.
-               * 3. Intentional Hold: Requires gesture for 3 consecutive frames to kill accidental triggers.
+               * HIGH-PRECISION SINGLE-PERSON BIOMECHANICAL NAMASKAR ENGINE
                */
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
                   if (isAudioPlaying) {
-                      consecutiveGestureFrames = 0
+                      consecutiveFrames = 0
                       return
                   }
 
-                  val allHands = result.landmarks()
-                  if (allHands.size < 2) {
-                      consecutiveGestureFrames = 0
+                  val hands = result.landmarks()
+                  if (hands.size < 2) {
+                      consecutiveFrames = 0
                       return
                   }
 
-                  // 1. Find the largest hand in the frame
-                  var dominantIndex = -1
-                  var maxScale = 0.0
+                  val handA = hands[0]
+                  val handB = hands[1]
 
-                  for (i in allHands.indices) {
-                      val scale = computeHandScale(allHands[i])
-                      if (scale > maxScale) {
-                          maxScale = scale
-                          dominantIndex = i
-                      }
-                  }
-
-                  // PROXIMITY GATE: Ignore anyone who hasn't stepped up close to the camera
-                  if (dominantIndex == -1 || maxScale < MIN_PROXIMITY_SCALE) {
-                      consecutiveGestureFrames = 0
-                      return
-                  }
-
-                  val primaryHand = allHands[dominantIndex]
-
-                  // 2. Find the second hand belonging to the same close person
-                  var partnerIndex = -1
-                  var minDistance = Double.MAX_VALUE
-
-                  for (j in allHands.indices) {
-                      if (j == dominantIndex) continue
-                      val partnerScale = computeHandScale(allHands[j])
-
-                      // Partner hand must be similar in size (rejects background individuals)
-                      if (partnerScale < maxScale * 0.60) continue
-
-                      val palmDist = hypot(
-                          (primaryHand[9].x() - allHands[j][9].x()).toDouble(),
-                          (primaryHand[9].y() - allHands[j][9].y()).toDouble()
-                      )
-
-                      if (palmDist < minDistance) {
-                          minDistance = palmDist
-                          partnerIndex = j
-                      }
-                  }
-
-                  if (partnerIndex == -1) {
-                      consecutiveGestureFrames = 0
-                      return
-                  }
-
-                  val secondaryHand = allHands[partnerIndex]
-
-                  // 3. Mathematical check of Namaskar geometry
-                  val wristA = primaryHand[0]
-                  val wristB = secondaryHand[0]
-                  val palmA = primaryHand[9]
-                  val palmB = secondaryHand[9]
-                  val tipA = primaryHand[12]
-                  val tipB = secondaryHand[12]
-
-                  val avgScale = (maxScale + computeHandScale(secondaryHand)) / 2.0
-
-                  val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
-                  val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
-
-                  // A. Palms must be together and fingertips aligned
-                  val isHandsTogether = (palmDist < avgScale * 1.15) && (tipDist < avgScale * 1.05)
-
-                  // B. Fingers must point upward (not downward)
-                  val isUpwardA = tipA.y() < wristA.y() + (avgScale * 0.25f)
-                  val isUpwardB = tipB.y() < wristB.y() + (avgScale * 0.25f)
-
-                  // C. Hands level with each other
-                  val isSameLevel = abs(palmA.y() - palmB.y()) < (avgScale * 0.75f)
-
-                  // D. Must be above waist height (0.05 to 0.92 of frame)
-                  val avgY = (palmA.y() + palmB.y()) / 2.0f
-                  val isAboveWaist = avgY in 0.05f..0.92f
-
-                  val isMatchingNamaskar = isHandsTogether && (isUpwardA && isUpwardB) && isSameLevel && isAboveWaist
-
-                  if (isMatchingNamaskar) {
-                      consecutiveGestureFrames++
-                      // Requires 3 consecutive frames of confirmed gesture (~200ms intentional hold)
-                      if (consecutiveGestureFrames >= 3) {
-                          consecutiveGestureFrames = 0
+                  if (checkStrictNamaskar(handA, handB)) {
+                      consecutiveFrames++
+                      // Requires 4 consecutive confirmed frames (~250ms intentional hold)
+                      if (consecutiveFrames >= 4) {
+                          consecutiveFrames = 0
                           isAudioPlaying = true
                           runOnUiThread {
                               statusText.text = "🙏 Namaskar Detected! Playing Audio..."
@@ -695,8 +611,69 @@ jobs:
                           }
                       }
                   } else {
-                      consecutiveGestureFrames = 0
+                      consecutiveFrames = 0
                   }
+              }
+
+              private fun checkStrictNamaskar(handA: List<NormalizedLandmark>, handB: List<NormalizedLandmark>): Boolean {
+                  val wristA = handA[0]
+                  val wristB = handB[0]
+                  val mcpA = handA[9]  // Middle MCP (center of palm)
+                  val mcpB = handB[9]
+                  val pipA = handA[10] // Middle PIP joint
+                  val pipB = handB[10]
+                  val tipA = handA[12] // Middle Fingertip
+                  val tipB = handB[12]
+
+                  val scaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
+                  val scaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
+                  val avgScale = (scaleA + scaleB) / 2.0
+
+                  // 1. Proximity gate: Hand must be large in frame (closest person only)
+                  if (avgScale < 0.11) return false
+
+                  // 2. Both hands must belong to the same person (similar size within 28%)
+                  if (abs(scaleA - scaleB) > avgScale * 0.28) return false
+
+                  // 3. Straight extended fingers check (Eliminates fists, holding objects, typing, or folded arms)
+                  // In screen coords, Y=0 is top. Smaller Y means higher elevation.
+                  val isStraightA = (tipA.y() < pipA.y() - (avgScale * 0.08f)) && (pipA.y() < mcpA.y()) && (mcpA.y() < wristA.y() + (avgScale * 0.10f))
+                  val isStraightB = (tipB.y() < pipB.y() - (avgScale * 0.08f)) && (pipB.y() < mcpB.y()) && (mcpB.y() < wristB.y() + (avgScale * 0.10f))
+                  if (!isStraightA || !isStraightB) return false
+
+                  // Index finger must also be pointing upward (landmark 8 vs 6)
+                  if (handA[8].y() > handA[6].y() || handB[8].y() > handB[6].y()) return false
+
+                  // 4. Orientation: Hands predominantly vertical (tilt angle < 35 degrees)
+                  val dyA = abs(wristA.y() - tipA.y())
+                  val dxA = abs(wristA.x() - tipA.x())
+                  val dyB = abs(wristB.y() - tipB.y())
+                  val dxB = abs(wristB.x() - tipB.x())
+                  if (dxA > dyA * 0.70f || dxB > dyB * 0.70f) return false
+
+                  // 5. True Prayer Pose (Palms & Fingertips co-located and pressed together)
+                  val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
+                  val palmDist = hypot((mcpA.x() - mcpB.x()).toDouble(), (mcpA.y() - mcpB.y()).toDouble())
+                  val wristDist = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
+
+                  // Fingertips must touch closely
+                  if (tipDist > avgScale * 0.40) return false
+
+                  // Palms must touch closely
+                  if (palmDist > avgScale * 0.45) return false
+
+                  // Wrists must be aligned and close
+                  if (wristDist > avgScale * 0.85) return false
+
+                  // 6. Vertical symmetry: Hands at the exact same elevation
+                  if (abs(tipA.y() - tipB.y()) > avgScale * 0.25f) return false
+                  if (abs(mcpA.y() - mcpB.y()) > avgScale * 0.28f) return false
+
+                  // 7. Height in frame: Above waist level (0.05 to 0.92)
+                  val avgY = (mcpA.y() + mcpB.y()) / 2.0f
+                  if (avgY !in 0.05f..0.92f) return false
+
+                  return true
               }
 
               private fun playAudioOnLoudspeaker() {
@@ -754,7 +731,7 @@ jobs:
                               mediaPlayer = null
                               Handler(Looper.getMainLooper()).postDelayed({
                                   isAudioPlaying = false
-                                  statusText.text = "Waiting for someone close..."
+                                  statusText.text = "Waiting for Namaskar..."
                                   statusText.setBackgroundColor(0xCC000000.toInt())
                               }, 1500)
                           }
@@ -906,10 +883,10 @@ jobs:
                   val options = HandLandmarker.HandLandmarkerOptions.builder()
                       .setBaseOptions(baseOptions)
                       .setRunningMode(RunningMode.IMAGE)
-                      .setNumHands(4)
-                      .setMinHandDetectionConfidence(0.40f)
-                      .setMinHandPresenceConfidence(0.40f)
-                      .setMinTrackingConfidence(0.40f)
+                      .setNumHands(2) // Focuses only on 1 person's 2 hands
+                      .setMinHandDetectionConfidence(0.48f)
+                      .setMinHandPresenceConfidence(0.48f)
+                      .setMinTrackingConfidence(0.48f)
                       .build()
                   handLandmarker = HandLandmarker.createFromOptions(this, options)
               }
