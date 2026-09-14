@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 5
-                  versionName = "5.0"
+                  versionCode = 6
+                  versionName = "6.0"
               }
 
               buildTypes {
@@ -323,7 +323,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Improvised High-Accuracy Gesture Detection)
+          # 9. Application Logic (Foreground Dominant Person Prioritization + Waist-Up Full Range)
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -358,6 +358,7 @@ jobs:
           import androidx.core.content.ContextCompat
           import com.google.mediapipe.framework.image.BitmapImageBuilder
           import com.google.mediapipe.tasks.core.BaseOptions
+          import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
           import com.google.mediapipe.tasks.vision.core.RunningMode
           import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker
           import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
@@ -577,64 +578,102 @@ jobs:
                   }
               }
 
+              private fun computeHandScale(hand: List<NormalizedLandmark>): Double {
+                  val wrist = hand[0]
+                  val middleTip = hand[12]
+                  return hypot((wrist.x() - middleTip.x()).toDouble(), (wrist.y() - middleTip.y()).toDouble())
+              }
+
               /**
-               * IMPROVISED DETECTION ALGORITHM:
-               * 1. Uses Palm Knuckles (Landmark 9) rather than wrists - knuckles ALWAYS touch in Namaskar.
-               * 2. Highly forgiving angle and proximity tolerances for sitting and standing.
+               * ADVANCED FOREGROUND FILTER & WAIST-UP GESTURE ENGINE:
+               * 1. Finds the largest hand in frame (foreground dominant person).
+               * 2. Finds its matching partner hand while ignoring background individuals.
+               * 3. Recognizes Namaskar anywhere from waist to head with full angle tolerance.
                */
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
                   if (isAudioPlaying) return
 
-                  val hands = result.landmarks()
-                  if (hands.size >= 2) {
-                      val handA = hands[0]
-                      val handB = hands[1]
+                  val allHands = result.landmarks()
+                  if (allHands.size < 2) return
 
-                      // Landmark 0: Wrist
-                      // Landmark 9: Middle Finger Knuckle (Center of Palm)
-                      // Landmark 12: Middle Fingertip
-                      val wristA = handA[0]
-                      val wristB = handB[0]
-                      val palmA = handA[9]
-                      val palmB = handB[9]
-                      val tipA = handA[12]
-                      val tipB = handB[12]
+                  // Step 1: Locate the largest hand in the frame (the person covering the majority of the view)
+                  var dominantIndex = -1
+                  var maxScale = 0.0
 
-                      // Dynamic scale adaptation based on hand length in pixels
-                      val scaleA = hypot((wristA.x() - tipA.x()).toDouble(), (wristA.y() - tipA.y()).toDouble())
-                      val scaleB = hypot((wristB.x() - tipB.x()).toDouble(), (wristB.y() - tipB.y()).toDouble())
-                      val avgHandSize = (scaleA + scaleB) / 2.0
+                  for (i in allHands.indices) {
+                      val scale = computeHandScale(allHands[i])
+                      if (scale > maxScale) {
+                          maxScale = scale
+                          dominantIndex = i
+                      }
+                  }
 
-                      if (avgHandSize < 0.035) return // Too far back in the room
+                  if (dominantIndex == -1 || maxScale < 0.035) return // Too far or invalid
 
-                      // Distance calculations
-                      val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
-                      val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
-                      val wristDist = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
+                  val primaryHand = allHands[dominantIndex]
 
-                      // 1. Hands Together Check:
-                      // Palms together OR fingertips close together with wrists in proximity
-                      val isHandsTogether = (palmDist < avgHandSize * 1.45) ||
-                              (tipDist < avgHandSize * 1.35 && wristDist < avgHandSize * 2.1)
+                  // Step 2: Find the partner hand belonging to this dominant foreground person
+                  // The partner hand must have comparable size and be in the proximity of the primary hand
+                  var partnerIndex = -1
+                  var minDistance = Double.MAX_VALUE
 
-                      // 2. Upward Fingertip Orientation (allowing natural forward/sideways tilt):
-                      val isUpwardA = (tipA.y() < wristA.y() + 0.02f) && (abs(tipA.x() - wristA.x()) < abs(tipA.y() - wristA.y()) * 1.9)
-                      val isUpwardB = (tipB.y() < wristB.y() + 0.02f) && (abs(tipB.x() - wristB.x()) < abs(tipB.y() - wristB.y()) * 1.9)
+                  for (j in allHands.indices) {
+                      if (j == dominantIndex) continue
+                      val partnerScale = computeHandScale(allHands[j])
 
-                      // 3. Hands at roughly equal height:
-                      val isSameLevel = abs(palmA.y() - palmB.y()) < (avgHandSize * 1.1)
+                      // Reject background people who have noticeably smaller hands
+                      if (partnerScale < maxScale * 0.45) continue
 
-                      // 4. Height Zone (Covers Lower Chest to Forehead):
-                      val avgY = (palmA.y() + palmB.y()) / 2.0f
-                      val isInZone = avgY in 0.05f..0.94f
+                      val palmDist = hypot(
+                          (primaryHand[9].x() - allHands[j][9].x()).toDouble(),
+                          (primaryHand[9].y() - allHands[j][9].y()).toDouble()
+                      )
 
-                      if (isHandsTogether && (isUpwardA || isUpwardB) && isSameLevel && isInZone) {
-                          isAudioPlaying = true
-                          runOnUiThread {
-                              statusText.text = "🙏 Namaskar Detected! Playing Audio..."
-                              statusText.setBackgroundColor(0xDD2E7D32.toInt())
-                              playAudioOnLoudspeaker()
-                          }
+                      if (palmDist < minDistance) {
+                          minDistance = palmDist
+                          partnerIndex = j
+                      }
+                  }
+
+                  if (partnerIndex == -1) return
+                  val secondaryHand = allHands[partnerIndex]
+
+                  // Step 3: Analyze gesture for the dominant person's two hands
+                  val wristA = primaryHand[0]
+                  val wristB = secondaryHand[0]
+                  val palmA = primaryHand[9]
+                  val palmB = secondaryHand[9]
+                  val tipA = primaryHand[12]
+                  val tipB = secondaryHand[12]
+
+                  val avgScale = (maxScale + computeHandScale(secondaryHand)) / 2.0
+
+                  val palmDist = hypot((palmA.x() - palmB.x()).toDouble(), (palmA.y() - palmB.y()).toDouble())
+                  val tipDist = hypot((tipA.x() - tipB.x()).toDouble(), (tipA.y() - tipB.y()).toDouble())
+                  val wristDist = hypot((wristA.x() - wristB.x()).toDouble(), (wristA.y() - wristB.y()).toDouble())
+
+                  // 1. Hands touching: Palms together OR fingertips together with nearby wrists
+                  val isHandsTouching = (palmDist < avgScale * 1.6) ||
+                          (tipDist < avgScale * 1.5 && wristDist < avgScale * 2.5) ||
+                          (palmDist < avgScale * 1.1)
+
+                  // 2. Upright / forward orientation (fingers pointing up or tilted towards camera, NOT pointing downwards)
+                  val isNotDownA = tipA.y() < wristA.y() + (avgScale * 0.45f)
+                  val isNotDownB = tipB.y() < wristB.y() + (avgScale * 0.45f)
+
+                  // 3. Hands at roughly consistent level
+                  val isSameLevel = abs(palmA.y() - palmB.y()) < (avgScale * 1.4f)
+
+                  // 4. Above waist anywhere: Covers whole range from head down to lower waist (0.02 to 0.96)
+                  val avgY = (palmA.y() + palmB.y()) / 2.0f
+                  val isAboveWaist = avgY in 0.02f..0.96f
+
+                  if (isHandsTouching && (isNotDownA || isNotDownB) && isSameLevel && isAboveWaist) {
+                      isAudioPlaying = true
+                      runOnUiThread {
+                          statusText.text = "🙏 Namaskar Detected! Playing Audio..."
+                          statusText.setBackgroundColor(0xDD2E7D32.toInt())
+                          playAudioOnLoudspeaker()
                       }
                   }
               }
@@ -846,10 +885,10 @@ jobs:
                   val options = HandLandmarker.HandLandmarkerOptions.builder()
                       .setBaseOptions(baseOptions)
                       .setRunningMode(RunningMode.IMAGE)
-                      .setNumHands(2)
-                      .setMinHandDetectionConfidence(0.32f)
-                      .setMinHandPresenceConfidence(0.32f)
-                      .setMinTrackingConfidence(0.32f)
+                      .setNumHands(4) // Detects up to 4 hands to separate foreground from background
+                      .setMinHandDetectionConfidence(0.25f) // High sensitivity for touching hands
+                      .setMinHandPresenceConfidence(0.25f)
+                      .setMinTrackingConfidence(0.25f)
                       .build()
                   handLandmarker = HandLandmarker.createFromOptions(this, options)
               }
