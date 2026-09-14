@@ -88,8 +88,8 @@ jobs:
                   applicationId = "com.example.namaskarapp"
                   minSdk = 24
                   targetSdk = 34
-                  versionCode = 10
-                  versionName = "10.0"
+                  versionCode = 11
+                  versionName = "11.0"
               }
 
               buildTypes {
@@ -319,7 +319,7 @@ jobs:
           </androidx.constraintlayout.widget.ConstraintLayout>
           EOF
 
-          # 9. Application Logic (Smart Dual-Mode Namaskar Engine)
+          # 9. Application Logic (Fixed Function Calls y() & x())
           cat << 'EOF' > app/src/main/java/com/example/namaskarapp/MainActivity.kt
           package com.example.namaskarapp
 
@@ -587,11 +587,6 @@ jobs:
                   }
               }
 
-              /**
-               * SMART DUAL-MODE NAMASKAR ENGINE:
-               * Case A: 2 hands detected separately and joined together.
-               * Case B: Hands pressed tightly flat so AI merges them into 1 single upright silhouette!
-               */
               private fun evaluateNamaskarGesture(result: HandLandmarkerResult) {
                   if (isAudioPlaying) {
                       consecutiveFrames = 0
@@ -607,7 +602,7 @@ jobs:
 
                   var isNamaskar = false
 
-                  // CASE A: 2 hands detected
+                  // CASE A: 2 hands detected separately
                   if (hands.size >= 2) {
                       val handA = hands[0]
                       val handB = hands[1]
@@ -641,7 +636,7 @@ jobs:
                       }
                   }
 
-                  // CASE B: 1 hand detected (hands pressed tightly flat together into one silhouette)
+                  // CASE B: 1 hand detected (hands pressed flat into one silhouette)
                   if (!isNamaskar && hands.size == 1) {
                       val hand = hands[0]
                       val wrist = hand[0]
@@ -649,17 +644,14 @@ jobs:
                       val tip = hand[12]  // middle fingertip
                       val indexTip = hand[8]
 
-                      val handHeight = wrist.y() - tip.y() // Positive when fingers point upward
+                      val handHeight = wrist.y() - tip.y()
                       val handWidth = abs(wrist.x() - tip.x())
                       val scale = hypot((wrist.x() - tip.x()).toDouble(), (wrist.y() - tip.y()).toDouble())
 
                       if (scale >= 0.045) {
-                          // Fingers pointing clearly UP
                           val isPointingUp = (handHeight > scale * 0.65) && (handWidth < handHeight * 0.80)
-                          // Extended fingers (fingertip is above knuckle)
-                          val isFingersExtended = (tip.y < mcp.y()) && (indexTip.y < hand[5].y())
-                          // Centered in front of the upper body (chest/neck/chin zone)
-                          val inCenterZone = (mcp.y in 0.08f..0.92f) && (mcp.x in 0.15f..0.85f)
+                          val isFingersExtended = (tip.y() < mcp.y()) && (indexTip.y() < hand[5].y())
+                          val inCenterZone = (mcp.y() in 0.08f..0.92f) && (mcp.x() in 0.15f..0.85f)
 
                           if (isPointingUp && isFingersExtended && inCenterZone) {
                               isNamaskar = true
@@ -669,7 +661,6 @@ jobs:
 
                   if (isNamaskar) {
                       consecutiveFrames++
-                      // Requires 2 consecutive frames (~100ms) for an instant, responsive trigger
                       if (consecutiveFrames >= 2) {
                           consecutiveFrames = 0
                           isAudioPlaying = true
